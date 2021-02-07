@@ -2,10 +2,15 @@ use crate::error::JsonParseError;
 use crate::position::Position;
 use std::{fmt, str::Chars};
 
-const SPACE: char = ' ';
-const TAB: char = '\t';
-const CARRIAGE_RETURN: char = '\r';
-const LINE_FEED: char = '\n';
+const SPACE: char = '\u{0020}';
+const QUOTATION_MARK: char = '\u{0022}';
+const REVERSE_SOLIDUS: char = '\u{005C}';
+const SOLIDUS: char = '\u{002F}';
+const BACK_SPACE: char = '\u{0008}';
+const FORM_FEED: char = '\u{000C}';
+const LINE_FEED: char = '\u{000A}';
+const CARRIAGE_RETURN: char = '\u{000D}';
+const TAB: char = '\u{0009}';
 
 const COMMA: char = ',';
 const COLON: char = ':';
@@ -134,11 +139,56 @@ impl<'a> Tokenizer<'a> {
         while let Some(ch) = self.cur {
             self.move_next();
 
-            // TODO : check control character
-            if ch == '"' {
+            if ch == REVERSE_SOLIDUS {
+                let ch = self.cur.ok_or("Failed to process string, not closed".to_string())?;
+
+                self.move_next();
+                
+                let ch = match ch {
+                    QUOTATION_MARK => QUOTATION_MARK,
+                    REVERSE_SOLIDUS => REVERSE_SOLIDUS,
+                    SOLIDUS => SOLIDUS,
+                    'b' => BACK_SPACE,
+                    'f' => FORM_FEED,
+                    'n' => LINE_FEED,
+                    'r' => CARRIAGE_RETURN,
+                    't' => TAB,
+                    'u' => {
+                        let mut hex_digits = String::new();
+                        for _ in 0..4 {
+                            let digit = self.cur.ok_or("Unexpected finish of json value".to_string())?;
+                            if !digit.is_ascii_hexdigit() {
+                                return Err("Only hexdecimal value is allowed, ".to_string());
+                            }
+                            self.move_next();
+                            hex_digits.push(digit)
+                        }
+                        let num = match u16::from_str_radix(&hex_digits, 16) {
+                            Ok(num) => num,
+                            Err(_) => {
+                                return Err("Unexpected error, please report this".to_string())
+                            }
+                        };
+
+                        let s = match String::from_utf16(&[num]) {
+                            Ok(s) => s,
+                            Err(_) => {
+                                return Err("Unexpected error, please report this".to_string())
+                            }
+                        };
+
+                        val.push_str(&s);
+                        continue;
+                    }
+                    _ => return Err("Unexpected escaped value while parsing string".to_string()),
+                };
+                println!("ch: {:#?}", ch);
+                val.push(ch);
+            } else if ch == QUOTATION_MARK {
                 return Ok(TokenValue::String(val));
+            } else {
+                val.push(ch);
             }
-            val.push(ch);
         }
 
         Err("Failed to process string, not closed".to_string())
@@ -248,7 +298,17 @@ mod tests {
     }
 
     get_string_token_value_success! {
-        get_string_token_value: (r#"string""#, "string"),
+        get_string_token_value_success_non_escaped: (r#"string""#, "string"),
+        get_string_token_value_success_escaped_quotation_mark: (r#"\"""#, "\u{0022}"),
+        get_string_token_value_success_escaped_reverse_solidus: (r#"\\""#, "\u{005C}"),
+        get_string_token_value_success_escaped_solidus: (r#"\/""#, "\u{002F}"),
+        get_string_token_value_success_escaped_backspace: (r#"\b""#, "\u{0008}"),
+        get_string_token_value_success_escaped_form_feed: (r#"\f""#, "\u{000C}"),
+        get_string_token_value_success_escaped_line_feed: (r#"\n""#, "\u{000A}"),
+        get_string_token_value_success_escaped_carrage_return: (r#"\r""#, "\u{000D}"),
+        get_string_token_value_success_escaped_tab: (r#"\t""#, "\u{0009}"),
+        get_string_token_value_success_escaped_hex_digits: (r#"\u2661""#, "\u{2661}"),
+        get_string_token_value_success_mixed: (r#"\t\u2661rust""#, "\u{0009}♡rust"),
     }
 
     #[test]
