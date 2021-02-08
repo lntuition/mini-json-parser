@@ -1,3 +1,4 @@
 mod error;
+mod lexer;
 mod position;
-mod tokenizer;
+mod token;

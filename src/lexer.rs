@@ -1,6 +1,9 @@
-use crate::error::Error;
 use crate::position::Position;
-use std::{fmt, str::Chars};
+use crate::{
+    error::{Error, ErrorInfo},
+    token::{Token, TokenValue},
+};
+use std::str::Chars;
 
 const SPACE: char = '\u{0020}';
 const QUOTATION_MARK: char = '\u{0022}';
@@ -19,59 +22,20 @@ const RIGHT_BRACKET: char = ']';
 const LEFT_BRACE: char = '{';
 const RIGHT_BRACE: char = '}';
 
-#[derive(Debug, PartialEq)]
-struct Token {
-    val: TokenValue,
-    pos: Position,
-}
-
-#[derive(Debug, PartialEq)]
-pub enum TokenValue {
-    Comma,
-    Colon,
-    LeftBracket,
-    RightBracket,
-    LeftBrace,
-    RightBrace,
-
-    String(String),
-    Number(f64),
-    Bool(bool),
-    Null,
-}
-
-impl fmt::Display for TokenValue {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            TokenValue::Comma => write!(f, "comma"),
-            TokenValue::Colon => write!(f, "colon"),
-            TokenValue::LeftBracket => write!(f, "left bracket"),
-            TokenValue::RightBracket => write!(f, "right bracket"),
-            TokenValue::LeftBrace => write!(f, "left brace"),
-            TokenValue::RightBrace => write!(f, "right brace"),
-            TokenValue::String(val) => write!(f, "string({})", val),
-            TokenValue::Number(val) => write!(f, "number({})", val),
-            TokenValue::Bool(true) => write!(f, "bool(true)"),
-            TokenValue::Bool(false) => write!(f, "bool(false)"),
-            TokenValue::Null => write!(f, "null"),
-        }
-    }
-}
-
 #[derive(Debug)]
-struct Tokenizer<'a> {
+struct Lexer<'a> {
     chars: Chars<'a>,
     cur: Option<char>,
     pos: Position,
 }
 
-impl<'a> Tokenizer<'a> {
+impl<'a> Lexer<'a> {
     pub fn new(s: &'a str) -> Self {
         let mut chars = s.chars();
         let cur = chars.next();
         let pos = Position { row: 1, col: 1 };
 
-        Tokenizer { chars, cur, pos }
+        Lexer { chars, cur, pos }
     }
 
     pub fn tokenize(&mut self) -> Result<Vec<Token>, Error> {
@@ -105,7 +69,7 @@ impl<'a> Tokenizer<'a> {
         }
     }
 
-    fn get_token_value(&mut self, start: char) -> Result<TokenValue, String> {
+    fn get_token_value(&mut self, start: char) -> Result<TokenValue, ErrorInfo> {
         match start {
             COMMA => Ok(TokenValue::Comma),
             COLON => Ok(TokenValue::Colon),
@@ -118,23 +82,23 @@ impl<'a> Tokenizer<'a> {
             'f' => self.get_false_token_value(),
             '"' => self.generate_string(),
             '0'..='9' | '-' => self.get_number_token_value(start),
-            _ => Err("Failed to get token value".to_string()),
+            _ => Err(ErrorInfo::Custom("Failed to get token value".to_string())),
         }
     }
 
-    fn get_null_token_value(&mut self) -> Result<TokenValue, String> {
+    fn get_null_token_value(&mut self) -> Result<TokenValue, ErrorInfo> {
         self.get_expected_token_value(&['u', 'l', 'l'], TokenValue::Null)
     }
 
-    fn get_true_token_value(&mut self) -> Result<TokenValue, String> {
+    fn get_true_token_value(&mut self) -> Result<TokenValue, ErrorInfo> {
         self.get_expected_token_value(&['r', 'u', 'e'], TokenValue::Bool(true))
     }
 
-    fn get_false_token_value(&mut self) -> Result<TokenValue, String> {
+    fn get_false_token_value(&mut self) -> Result<TokenValue, ErrorInfo> {
         self.get_expected_token_value(&['a', 'l', 's', 'e'], TokenValue::Bool(false))
     }
 
-    fn generate_string(&mut self) -> Result<TokenValue, String> {
+    fn generate_string(&mut self) -> Result<TokenValue, ErrorInfo> {
         let mut val: String = String::new();
         while let Some(ch) = self.generate_char()? {
             val.push(ch);
@@ -142,23 +106,20 @@ impl<'a> Tokenizer<'a> {
         Ok(TokenValue::String(val))
     }
 
-    fn generate_char(&mut self) -> Result<Option<char>, String> {
-        let ch = self
-            .cur
-            .ok_or("Failed to get next character, is string not closed?".to_string())?;
+    fn generate_char(&mut self) -> Result<Option<char>, ErrorInfo> {
+        let ch = self.cur.ok_or(ErrorInfo::NotStringClosed)?;
         self.move_next();
 
         Ok(match ch {
             REVERSE_SOLIDUS => Some(self.generate_escaped_char()?),
             QUOTATION_MARK => None,
+            ch @ _ if ch.is_control() => return Err(ErrorInfo::NotAllowedControlChar),
             ch @ _ => Some(ch),
         })
     }
 
-    fn generate_escaped_char(&mut self) -> Result<char, String> {
-        let ch = self
-            .cur
-            .ok_or("Failed to get next character, is string not closed?".to_string())?;
+    fn generate_escaped_char(&mut self) -> Result<char, ErrorInfo> {
+        let ch = self.cur.ok_or(ErrorInfo::NotStringClosed)?;
         self.move_next();
 
         Ok(match ch {
@@ -171,18 +132,16 @@ impl<'a> Tokenizer<'a> {
             'r' => CARRIAGE_RETURN,
             't' => TAB,
             'u' => self.generate_escaped_hex_digit_char()?,
-            _ => return Err("Wrong escaped value".to_string()),
+            _ => return Err(ErrorInfo::UnrecognizableEscapedChar),
         })
     }
 
-    fn generate_escaped_hex_digit_char(&mut self) -> Result<char, String> {
+    fn generate_escaped_hex_digit_char(&mut self) -> Result<char, ErrorInfo> {
         let mut hex_digits = String::new();
         for _ in 0..4 {
-            let digit = self
-                .cur
-                .ok_or("Failed to get next character, is string not closed?".to_string())?;
+            let digit = self.cur.ok_or(ErrorInfo::NotStringClosed)?;
             if !digit.is_ascii_hexdigit() {
-                return Err("Only hexdecimal value is allowed, ".to_string());
+                return Err(ErrorInfo::NotHexDigitChar);
             }
             self.move_next();
             hex_digits.push(digit)
@@ -190,25 +149,23 @@ impl<'a> Tokenizer<'a> {
 
         let hex_num = match u16::from_str_radix(&hex_digits, 16) {
             Ok(hex_num) => hex_num,
-            Err(_) => return Err("Unexpected error1, please report this".to_string()),
+            Err(_) => return Err(ErrorInfo::UnreachablePoint(1)),
         };
 
         let mut unicode_chars = match String::from_utf16(&[hex_num]) {
             Ok(s) => s,
-            Err(_) => return Err("Unexpected error2, please report this".to_string()),
+            Err(_) => return Err(ErrorInfo::UnreachablePoint(2)),
         };
 
-        let ch = unicode_chars
-            .pop()
-            .ok_or("Unexpected error3, please report this".to_string())?;
+        let ch = unicode_chars.pop().ok_or(ErrorInfo::UnreachablePoint(3))?;
         if !unicode_chars.is_empty() {
-            return Err("Unexpected error3, please report this".to_string());
+            return Err(ErrorInfo::UnreachablePoint(4));
         }
 
         Ok(ch)
     }
 
-    fn get_number_token_value(&mut self, start: char) -> Result<TokenValue, String> {
+    fn get_number_token_value(&mut self, start: char) -> Result<TokenValue, ErrorInfo> {
         let mut val: String = String::from(start);
         while let Some(ch) = self.cur {
             // TODO : check fraction and exponent
@@ -222,7 +179,7 @@ impl<'a> Tokenizer<'a> {
 
         match val.parse::<f64>() {
             Ok(num) => Ok(TokenValue::Number(num)),
-            Err(_) => Err("Failed to parse number".to_string()),
+            Err(_) => Err(ErrorInfo::Custom("Failed to parse number".to_string())),
         }
     }
 
@@ -230,13 +187,10 @@ impl<'a> Tokenizer<'a> {
         &mut self,
         expected: &[char],
         result: TokenValue,
-    ) -> Result<TokenValue, String> {
+    ) -> Result<TokenValue, ErrorInfo> {
         for &expect in expected.iter() {
             if self.cur != Some(expect) {
-                return Err(format!(
-                    "Failed to process {}, '{}' is not given",
-                    result, expect
-                ));
+                return Err(ErrorInfo::NotExpectCharGiven(expect));
             }
             self.move_next();
         }
@@ -246,53 +200,29 @@ impl<'a> Tokenizer<'a> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Token, TokenValue, Tokenizer};
+    use super::{ErrorInfo, TokenValue, Lexer};
 
     #[test]
     fn get_null_token_value_success() {
         assert_eq!(
-            Tokenizer::new("ull").get_null_token_value(),
+            Lexer::new("ull").get_null_token_value(),
             Ok(TokenValue::Null)
-        )
-    }
-
-    #[test]
-    fn get_null_token_value_fail() {
-        assert_eq!(
-            Tokenizer::new("ul").get_null_token_value(),
-            Err("Failed to process null, 'l' is not given".to_string())
         )
     }
 
     #[test]
     fn get_true_token_value_success() {
         assert_eq!(
-            Tokenizer::new("rue").get_true_token_value(),
+            Lexer::new("rue").get_true_token_value(),
             Ok(TokenValue::Bool(true))
-        )
-    }
-
-    #[test]
-    fn get_true_token_value_fail() {
-        assert_eq!(
-            Tokenizer::new("rum").get_true_token_value(),
-            Err("Failed to process bool(true), 'e' is not given".to_string())
         )
     }
 
     #[test]
     fn get_false_token_value_success() {
         assert_eq!(
-            Tokenizer::new("alse").get_false_token_value(),
+            Lexer::new("alse").get_false_token_value(),
             Ok(TokenValue::Bool(false))
-        )
-    }
-
-    #[test]
-    fn get_false_token_value_fail() {
-        assert_eq!(
-            Tokenizer::new("").get_false_token_value(),
-            Err("Failed to process bool(false), 'a' is not given".to_string())
         )
     }
 
@@ -303,7 +233,7 @@ mod tests {
             fn $func() {
                 let (string, val) = $value;
                 assert_eq!(
-                    Tokenizer::new(string).generate_string(),
+                    Lexer::new(string).generate_string(),
                     Ok(TokenValue::String(val.to_string()))
                 );
             }
@@ -325,12 +255,26 @@ mod tests {
         generate_string_success_mixed: (r#"\t\u2661rust""#, "\u{0009}♡rust"),
     }
 
-    #[test]
-    fn generate_string_fail() {
-        assert_eq!(
-            Tokenizer::new("string").generate_string(),
-            Err("Failed to get next character, is string not closed?".to_string())
-        )
+    macro_rules! generate_string_fail {
+        ($($func:ident: $value:expr,)*) => {
+        $(
+            #[test]
+            fn $func() {
+                let (string, err) = $value;
+                assert_eq!(
+                    Lexer::new(string).generate_string(),
+                    Err(err)
+                );
+            }
+        )*
+        }
+    }
+
+    generate_string_fail! {
+        generate_string_fail_not_closed: (r#"string"#, ErrorInfo::NotStringClosed),
+        generate_string_fail_control_char: ("\u{000C}\"", ErrorInfo::NotAllowedControlChar),
+        generate_string_fail_unrecognizable_escaped: (r#"\k""#, ErrorInfo::UnrecognizableEscapedChar),
+        generate_string_fail_not_hex_digit: (r#"\u100G""#, ErrorInfo::NotHexDigitChar),
     }
 
     macro_rules! get_number_token_value_success {
@@ -340,7 +284,7 @@ mod tests {
             fn $func() {
                 let (start, string, num) = $value;
                 assert_eq!(
-                    Tokenizer::new(string).get_number_token_value(start),
+                    Lexer::new(string).get_number_token_value(start),
                     Ok(TokenValue::Number(num))
                 );
             }
