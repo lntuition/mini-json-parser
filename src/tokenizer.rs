@@ -1,4 +1,4 @@
-use crate::error::JsonParseError;
+use crate::error::Error;
 use crate::position::Position;
 use std::{fmt, str::Chars};
 
@@ -74,7 +74,7 @@ impl<'a> Tokenizer<'a> {
         Tokenizer { chars, cur, pos }
     }
 
-    pub fn tokenize(&mut self) -> Result<Vec<Token>, JsonParseError> {
+    pub fn tokenize(&mut self) -> Result<Vec<Token>, Error> {
         let mut tokens: Vec<Token> = vec![];
 
         while let Some(ch) = self.cur {
@@ -87,7 +87,7 @@ impl<'a> Tokenizer<'a> {
 
             let token = match self.get_token_value(ch) {
                 Ok(val) => Token { pos, val },
-                Err(msg) => return Err(JsonParseError { pos, msg }),
+                Err(info) => return Err(Error { pos, info }),
             };
 
             tokens.push(token);
@@ -116,7 +116,7 @@ impl<'a> Tokenizer<'a> {
             'n' => self.get_null_token_value(),
             't' => self.get_true_token_value(),
             'f' => self.get_false_token_value(),
-            '"' => self.get_string_token_value(),
+            '"' => self.generate_string(),
             '0'..='9' | '-' => self.get_number_token_value(start),
             _ => Err("Failed to get token value".to_string()),
         }
@@ -134,64 +134,78 @@ impl<'a> Tokenizer<'a> {
         self.get_expected_token_value(&['a', 'l', 's', 'e'], TokenValue::Bool(false))
     }
 
-    fn get_string_token_value(&mut self) -> Result<TokenValue, String> {
+    fn generate_string(&mut self) -> Result<TokenValue, String> {
         let mut val: String = String::new();
-        while let Some(ch) = self.cur {
-            self.move_next();
+        while let Some(ch) = self.generate_char()? {
+            val.push(ch);
+        }
+        Ok(TokenValue::String(val))
+    }
 
-            if ch == REVERSE_SOLIDUS {
-                let ch = self.cur.ok_or("Failed to process string, not closed".to_string())?;
+    fn generate_char(&mut self) -> Result<Option<char>, String> {
+        let ch = self
+            .cur
+            .ok_or("Failed to get next character, is string not closed?".to_string())?;
+        self.move_next();
 
-                self.move_next();
-                
-                let ch = match ch {
-                    QUOTATION_MARK => QUOTATION_MARK,
-                    REVERSE_SOLIDUS => REVERSE_SOLIDUS,
-                    SOLIDUS => SOLIDUS,
-                    'b' => BACK_SPACE,
-                    'f' => FORM_FEED,
-                    'n' => LINE_FEED,
-                    'r' => CARRIAGE_RETURN,
-                    't' => TAB,
-                    'u' => {
-                        let mut hex_digits = String::new();
-                        for _ in 0..4 {
-                            let digit = self.cur.ok_or("Unexpected finish of json value".to_string())?;
-                            if !digit.is_ascii_hexdigit() {
-                                return Err("Only hexdecimal value is allowed, ".to_string());
-                            }
-                            self.move_next();
-                            hex_digits.push(digit)
-                        }
-                        let num = match u16::from_str_radix(&hex_digits, 16) {
-                            Ok(num) => num,
-                            Err(_) => {
-                                return Err("Unexpected error, please report this".to_string())
-                            }
-                        };
+        Ok(match ch {
+            REVERSE_SOLIDUS => Some(self.generate_escaped_char()?),
+            QUOTATION_MARK => None,
+            ch @ _ => Some(ch),
+        })
+    }
 
-                        let s = match String::from_utf16(&[num]) {
-                            Ok(s) => s,
-                            Err(_) => {
-                                return Err("Unexpected error, please report this".to_string())
-                            }
-                        };
+    fn generate_escaped_char(&mut self) -> Result<char, String> {
+        let ch = self
+            .cur
+            .ok_or("Failed to get next character, is string not closed?".to_string())?;
+        self.move_next();
 
-                        val.push_str(&s);
-                        continue;
-                    }
-                    _ => return Err("Unexpected escaped value while parsing string".to_string()),
-                };
-                println!("ch: {:#?}", ch);
-                val.push(ch);
-            } else if ch == QUOTATION_MARK {
-                return Ok(TokenValue::String(val));
-            } else {
-                val.push(ch);
+        Ok(match ch {
+            QUOTATION_MARK => QUOTATION_MARK,
+            REVERSE_SOLIDUS => REVERSE_SOLIDUS,
+            SOLIDUS => SOLIDUS,
+            'b' => BACK_SPACE,
+            'f' => FORM_FEED,
+            'n' => LINE_FEED,
+            'r' => CARRIAGE_RETURN,
+            't' => TAB,
+            'u' => self.generate_escaped_hex_digit_char()?,
+            _ => return Err("Wrong escaped value".to_string()),
+        })
+    }
+
+    fn generate_escaped_hex_digit_char(&mut self) -> Result<char, String> {
+        let mut hex_digits = String::new();
+        for _ in 0..4 {
+            let digit = self
+                .cur
+                .ok_or("Failed to get next character, is string not closed?".to_string())?;
+            if !digit.is_ascii_hexdigit() {
+                return Err("Only hexdecimal value is allowed, ".to_string());
             }
+            self.move_next();
+            hex_digits.push(digit)
         }
 
-        Err("Failed to process string, not closed".to_string())
+        let hex_num = match u16::from_str_radix(&hex_digits, 16) {
+            Ok(hex_num) => hex_num,
+            Err(_) => return Err("Unexpected error1, please report this".to_string()),
+        };
+
+        let mut unicode_chars = match String::from_utf16(&[hex_num]) {
+            Ok(s) => s,
+            Err(_) => return Err("Unexpected error2, please report this".to_string()),
+        };
+
+        let ch = unicode_chars
+            .pop()
+            .ok_or("Unexpected error3, please report this".to_string())?;
+        if !unicode_chars.is_empty() {
+            return Err("Unexpected error3, please report this".to_string());
+        }
+
+        Ok(ch)
     }
 
     fn get_number_token_value(&mut self, start: char) -> Result<TokenValue, String> {
@@ -282,14 +296,14 @@ mod tests {
         )
     }
 
-    macro_rules! get_string_token_value_success {
+    macro_rules! generate_string_success {
         ($($func:ident: $value:expr,)*) => {
         $(
             #[test]
             fn $func() {
                 let (string, val) = $value;
                 assert_eq!(
-                    Tokenizer::new(string).get_string_token_value(),
+                    Tokenizer::new(string).generate_string(),
                     Ok(TokenValue::String(val.to_string()))
                 );
             }
@@ -297,25 +311,25 @@ mod tests {
         }
     }
 
-    get_string_token_value_success! {
-        get_string_token_value_success_non_escaped: (r#"string""#, "string"),
-        get_string_token_value_success_escaped_quotation_mark: (r#"\"""#, "\u{0022}"),
-        get_string_token_value_success_escaped_reverse_solidus: (r#"\\""#, "\u{005C}"),
-        get_string_token_value_success_escaped_solidus: (r#"\/""#, "\u{002F}"),
-        get_string_token_value_success_escaped_backspace: (r#"\b""#, "\u{0008}"),
-        get_string_token_value_success_escaped_form_feed: (r#"\f""#, "\u{000C}"),
-        get_string_token_value_success_escaped_line_feed: (r#"\n""#, "\u{000A}"),
-        get_string_token_value_success_escaped_carrage_return: (r#"\r""#, "\u{000D}"),
-        get_string_token_value_success_escaped_tab: (r#"\t""#, "\u{0009}"),
-        get_string_token_value_success_escaped_hex_digits: (r#"\u2661""#, "\u{2661}"),
-        get_string_token_value_success_mixed: (r#"\t\u2661rust""#, "\u{0009}♡rust"),
+    generate_string_success! {
+        generate_string_success_non_escaped: (r#"string""#, "string"),
+        generate_string_success_escaped_quotation_mark: (r#"\"""#, "\u{0022}"),
+        generate_string_success_escaped_reverse_solidus: (r#"\\""#, "\u{005C}"),
+        generate_string_success_escaped_solidus: (r#"\/""#, "\u{002F}"),
+        generate_string_success_escaped_backspace: (r#"\b""#, "\u{0008}"),
+        generate_string_success_escaped_form_feed: (r#"\f""#, "\u{000C}"),
+        generate_string_success_escaped_line_feed: (r#"\n""#, "\u{000A}"),
+        generate_string_success_escaped_carrage_return: (r#"\r""#, "\u{000D}"),
+        generate_string_success_escaped_tab: (r#"\t""#, "\u{0009}"),
+        generate_string_success_escaped_hex_digits: (r#"\u2661""#, "\u{2661}"),
+        generate_string_success_mixed: (r#"\t\u2661rust""#, "\u{0009}♡rust"),
     }
 
     #[test]
-    fn get_string_token_value_fail() {
+    fn generate_string_fail() {
         assert_eq!(
-            Tokenizer::new("string").get_string_token_value(),
-            Err("Failed to process string, not closed".to_string())
+            Tokenizer::new("string").generate_string(),
+            Err("Failed to get next character, is string not closed?".to_string())
         )
     }
 
