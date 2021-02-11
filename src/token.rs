@@ -1,10 +1,4 @@
-use crate::position::Position;
-
-#[derive(Debug, PartialEq)]
-pub struct Token {
-    pub val: TokenValue,
-    pub pos: Position,
-}
+use crate::position::PositionRange;
 
 #[derive(Debug, PartialEq)]
 pub enum TokenValue {
@@ -19,4 +13,10 @@ pub enum TokenValue {
     Number(f64),
     Bool(bool),
     Null,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Token {
+    pub val: TokenValue,
+    pub range: PositionRange,
 }

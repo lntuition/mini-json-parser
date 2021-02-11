@@ -1,42 +1,55 @@
-use crate::position::Position;
+use crate::position::PositionRange;
 use std::fmt;
 
 #[derive(Debug, PartialEq)]
 pub enum ErrorInfo {
-    NotStringClosed,
-    NotAllowedControlChar,
-    UnrecognizableEscapedChar,
-    NotHexDigitChar,
+    NotProperToken(char),
 
-    NotExpectCharGiven(char),
+    UnexpectedEOF,
+    NotAllowedControlChar(char),
+    NotProperEscapedChar(char),
+    NotHexDigitChar(char),
 
+    NotNullToken,
+    NotTrueToken,
+    NotFalseToken,
+
+    NotProperHandledPoint(usize),
     UnreachablePoint(usize),
-    Custom(String),
 }
 
 impl fmt::Display for ErrorInfo {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            ErrorInfo::NotStringClosed => {
-                write!(f, "Found end of JSON, until string not closed")
+            ErrorInfo::NotProperToken(ch) => {
+                write!(f, "Not proper token first character, '{}'", ch)
             }
-            ErrorInfo::NotAllowedControlChar => {
-                write!(f, "Only non-control character is allowed")
+            ErrorInfo::UnexpectedEOF => {
+                write!(f, "Unexpected EOF character while parsing")
             }
-            ErrorInfo::UnrecognizableEscapedChar => {
-                write!(f, "Unrecognizable escaped character was given")
+            ErrorInfo::NotAllowedControlChar(ch) => {
+                write!(f, "Not allowed control character, '\\u{:04x}'", ch as u32)
             }
-            ErrorInfo::NotExpectCharGiven(ref expect) => {
-                write!(f, "Expect character({}) is not given", expect)
+            ErrorInfo::NotProperEscapedChar(ch) => {
+                write!(f, "Not proper escaped character, '\\{}'", ch)
             }
-            ErrorInfo::NotHexDigitChar => {
-                write!(f, "Only hex digit(0..=F) character is allowed")
+            ErrorInfo::NotHexDigitChar(ch) => {
+                write!(f, "Not hex digit(0..=F) character, '{}'", ch)
             }
-            ErrorInfo::UnreachablePoint(ref idx) => {
-                write!(f, "Join to unreached point(#{}), please report issue", idx)
+            ErrorInfo::NotNullToken => {
+                write!(f, "Not null token, expected 'null'")
             }
-            ErrorInfo::Custom(ref msg) => {
-                write!(f, "{}", msg)
+            ErrorInfo::NotTrueToken => {
+                write!(f, "Not true token, expected 'true'")
+            }
+            ErrorInfo::NotFalseToken => {
+                write!(f, "Not false token, expected 'false'")
+            }
+            ErrorInfo::NotProperHandledPoint(id) => {
+                write!(f, "Not proper handled point #{}, Please check core", id)
+            }
+            ErrorInfo::UnreachablePoint(id) => {
+                write!(f, "Unreachable point #{}, Please report issue", id)
             }
         }
     }
@@ -44,13 +57,12 @@ impl fmt::Display for ErrorInfo {
 
 #[derive(Debug)]
 pub struct Error {
-    pub pos: Position,
     pub info: ErrorInfo,
+    pub range: PositionRange,
 }
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(f, "Between {} and {}", self.pos, self.pos)?;
-        writeln!(f, "Error : {}", self.info)
+        write!(f, "{} - {}", self.range, self.info)
     }
 }

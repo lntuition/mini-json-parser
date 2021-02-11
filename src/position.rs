@@ -1,4 +1,5 @@
 use std::fmt;
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Position {
     pub row: usize,
@@ -7,7 +8,7 @@ pub struct Position {
 
 impl fmt::Display for Position {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "row {}, col {}", self.row, self.col)
+        write!(f, "{}:{}", self.row, self.col)
     }
 }
 
@@ -19,5 +20,17 @@ impl Position {
     pub fn next_row(&mut self) {
         self.row += 1;
         self.col = 1;
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct PositionRange {
+    pub start: Position,
+    pub end: Position,
+}
+
+impl fmt::Display for PositionRange {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Between {} and {}", self.start, self.end)
     }
 }
