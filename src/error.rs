@@ -8,7 +8,9 @@ pub enum ErrorInfo {
     UnexpectedEOF,
     NotAllowedControlChar(char),
     NotProperEscapedChar(char),
-    NotHexDigitChar(char),
+    NotHexDigit(char),
+
+    NotDecDigit(char),
 
     NotNullToken,
     NotTrueToken,
@@ -33,8 +35,11 @@ impl fmt::Display for ErrorInfo {
             ErrorInfo::NotProperEscapedChar(ch) => {
                 write!(f, "Not proper escaped character, '\\{}'", ch)
             }
-            ErrorInfo::NotHexDigitChar(ch) => {
-                write!(f, "Not hex digit(0..=F) character, '{}'", ch)
+            ErrorInfo::NotHexDigit(ch) => {
+                write!(f, "Not hexadecimal digit(0..=F), '{}'", ch)
+            }
+            ErrorInfo::NotDecDigit(ch) => {
+                write!(f, "Not decimal digit(0..=9), '{}'", ch)
             }
             ErrorInfo::NotNullToken => {
                 write!(f, "Not null token, expected 'null'")

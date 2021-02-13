@@ -57,7 +57,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn check_expected(&mut self, expected: &str) -> bool {
+    fn move_if_expected(&mut self, expected: &str) -> bool {
         for expect in expected.chars() {
             if self.cur != Some(expect) {
                 return false;
@@ -97,20 +97,20 @@ impl<'a> Lexer<'a> {
             'n' => self.generate_null_value(),
             't' => self.generate_true_value(),
             'f' => self.generate_false_value(),
-            //'0'..='9' | '-' => self.get_number_token_value(),
             QUOTATION_MARK => self.generate_string_value(),
+            '0'..='9' | '-' => self.generate_number_value(),
             _ => self.generate_reserved_value(),
         }
     }
 
     fn generate_reserved_value(&mut self) -> Result<TokenValue, ErrorInfo> {
         let val = match self.cur.ok_or(ErrorInfo::NotProperHandledPoint(1))? {
-            COMMA => TokenValue::Comma,
-            COLON => TokenValue::Colon,
-            LEFT_BRACE => TokenValue::LeftBrace,
-            RIGHT_BRACE => TokenValue::RightBrace,
-            LEFT_BRACKET => TokenValue::LeftBracket,
-            RIGHT_BRACKET => TokenValue::RightBracket,
+            COMMA => TokenValue::ValueSeperator,
+            COLON => TokenValue::NameSeperator,
+            LEFT_BRACE => TokenValue::BeginObject,
+            RIGHT_BRACE => TokenValue::EndObject,
+            LEFT_BRACKET => TokenValue::BeginArray,
+            RIGHT_BRACKET => TokenValue::EndArray,
             ch @ _ => return Err(ErrorInfo::NotProperToken(ch)),
         };
         self.move_next();
@@ -124,7 +124,7 @@ impl<'a> Lexer<'a> {
         }
         self.move_next();
 
-        match self.check_expected("ull") {
+        match self.move_if_expected("ull") {
             true => Ok(TokenValue::Null),
             false => Err(ErrorInfo::NotNullToken),
         }
@@ -137,8 +137,8 @@ impl<'a> Lexer<'a> {
         }
         self.move_next();
 
-        match self.check_expected("rue") {
-            true => Ok(TokenValue::Bool(true)),
+        match self.move_if_expected("rue") {
+            true => Ok(TokenValue::True),
             false => Err(ErrorInfo::NotTrueToken),
         }
     }
@@ -150,8 +150,8 @@ impl<'a> Lexer<'a> {
         }
         self.move_next();
 
-        match self.check_expected("alse") {
-            true => Ok(TokenValue::Bool(false)),
+        match self.move_if_expected("alse") {
+            true => Ok(TokenValue::False),
             false => Err(ErrorInfo::NotFalseToken),
         }
     }
@@ -205,9 +205,10 @@ impl<'a> Lexer<'a> {
         for _ in 0..4 {
             let digit = self.cur.ok_or(ErrorInfo::UnexpectedEOF)?;
             if !digit.is_ascii_hexdigit() {
-                return Err(ErrorInfo::NotHexDigitChar(digit));
+                return Err(ErrorInfo::NotHexDigit(digit));
             }
             self.move_next();
+
             hex_digits.push(digit)
         }
 
@@ -229,23 +230,50 @@ impl<'a> Lexer<'a> {
         Ok(ch)
     }
 
-    // fn get_number_token_value(&mut self, start: char) -> Result<TokenValue, ErrorInfo> {
-    //     let mut val: String = String::from(start);
-    //     while let Some(ch) = self.cur {
-    //         // TODO : check fraction and exponent
-    //         if !ch.is_numeric() {
-    //             break;
-    //         }
+    fn generate_number_value(&mut self) -> Result<TokenValue, ErrorInfo> {
+        let mut num = String::new();
 
-    //         self.move_next();
-    //         val.push(ch);
-    //     }
+        // if let Some(sign) =  self.generate_sign() {
+        //     num.push(sign)
+        // }
 
-    //     match val.parse::<f64>() {
-    //         Ok(num) => Ok(TokenValue::Number(num)),
-    //         Err(_) => Err(ErrorInfo::Custom("Failed to parse number".to_string())),
-    //     }
-    // }
+        num.push_str(&self.generate_digits()?);
+
+        // if let Some(fraction) = self.generate_fraction()? {
+        //     num.push_str(fraction);
+        // }
+
+        // if let Some(exponent) = self.generate_exponent() {
+        //     num.push_str(exponent);
+        // }
+
+        match num.parse::<f64>() {
+            Ok(num) => Ok(TokenValue::Number(num)),
+            Err(_) => Err(ErrorInfo::UnreachablePoint(5)),
+        }
+    }
+
+    fn generate_digits(&mut self) -> Result<String, ErrorInfo> {
+        let first_digit = self.cur.ok_or(ErrorInfo::UnexpectedEOF)?;
+        self.move_next();
+
+        let mut digits = match first_digit {
+            '1'..='9' => String::from(first_digit),
+            '0' => return Ok(String::from(first_digit)),
+            _ => return Err(ErrorInfo::NotDecDigit(first_digit)),
+        };
+
+        while let Some(digit) = self.cur {
+            match digit {
+                '0'..='9' => {
+                    self.move_next();
+                    digits.push(digit)
+                }
+                _ => break,
+            }
+        }
+        Ok(digits)
+    }
 }
 
 #[cfg(test)]
@@ -301,7 +329,7 @@ mod tests {
     macro_rules! generate_true_value_ok {
         ($($name:ident: $input:expr;)*) => {
         $(
-            generate_value_ok! ($name, $input, generate_true_value, TokenValue::Bool(true));
+            generate_value_ok! ($name, $input, generate_true_value, TokenValue::True);
         )*
         }
     }
@@ -326,7 +354,7 @@ mod tests {
     macro_rules! generate_false_value_ok {
         ($($name:ident: $input:expr;)*) => {
         $(
-            generate_value_ok! ($name, $input, generate_false_value, TokenValue::Bool(false));
+            generate_value_ok! ($name, $input, generate_false_value, TokenValue::False);
         )*
         }
     }
@@ -383,6 +411,31 @@ mod tests {
         generate_string_value_err_not_terminated: (r#""string"#), ErrorInfo::UnexpectedEOF;
         generate_string_value_err_control_char: ("\"\u{000C}\""), ErrorInfo::NotAllowedControlChar('\u{000C}');
         generate_string_value_err_wrong_escaped: (r#""\k""#), ErrorInfo::NotProperEscapedChar('k');
-        generate_string_value_err_not_hex_digit: (r#""\u100G""#), ErrorInfo::NotHexDigitChar('G');
+        generate_string_value_err_not_hex_digit: (r#""\u100G""#), ErrorInfo::NotHexDigit('G');
+    }
+
+    macro_rules! generate_number_value_ok {
+        ($($name:ident: $input:expr, $val:expr;)*) => {
+        $(
+            generate_value_ok! ($name, $input, generate_number_value, TokenValue::Number($val));
+        )*
+        }
+    }
+
+    generate_number_value_ok! {
+        generate_number_value_ok_zero: ("0"), 0.0;
+        generate_number_value_ok_integer: ("123"), 123.0;
+    }
+
+    macro_rules! generate_number_value_err {
+        ($($name:ident: $input:expr, $err:expr;)*) => {
+        $(
+            generate_value_err! ($name, $input, generate_number_value, $err);
+        )*
+        }
+    }
+
+    generate_number_value_err! {
+        generate_number_value_err_not_dec_digit: ("A"), ErrorInfo::NotDecDigit('A');
     }
 }
