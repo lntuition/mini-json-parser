@@ -332,6 +332,36 @@ mod tests {
         };
     }
 
+    macro_rules! generate_reserved_value_ok {
+        ($($name:ident: $input:expr, $val:expr;)*) => {
+        $(
+            generate_value_ok! ($name, $input, generate_reserved_value, $val);
+        )*
+        }
+    }
+
+    generate_reserved_value_ok! {
+        generate_reserved_value_ok_value_sperator: (","), TokenValue::ValueSeperator;
+        generate_reserved_value_ok_name_sperator: (":"), TokenValue::NameSeperator;
+        generate_reserved_value_ok_begin_object: ("{"), TokenValue::BeginObject;
+        generate_reserved_value_ok_end_object: ("}"), TokenValue::EndObject;
+        generate_reserved_value_ok_begin_array: ("["), TokenValue::BeginArray;
+        generate_reserved_value_ok_end_array: ("]"), TokenValue::EndArray;
+    }
+
+    macro_rules! generate_reserved_value_err {
+        ($($name:ident: $input:expr, $err:expr;)*) => {
+        $(
+            generate_value_err! ($name, $input, generate_reserved_value, $err);
+        )*
+        }
+    }
+
+    generate_reserved_value_err! {
+        generate_reserved_value_err_internal: (""), ErrorInfo::NotProperHandledPoint(1);
+        generate_reserved_value_err_not_null: ("wrong"), ErrorInfo::NotProperToken('w');
+    }
+
     macro_rules! generate_null_value_ok {
         ($($name:ident: $input:expr;)*) => {
         $(
