@@ -231,21 +231,16 @@ impl<'a> Lexer<'a> {
     }
 
     fn generate_number_value(&mut self) -> Result<TokenValue, ErrorInfo> {
-        let mut num = String::new();
-
-        // if let Some(sign) =  self.generate_sign() {
-        //     num.push(sign)
-        // }
-
+        let mut num = match self.cur.ok_or(ErrorInfo::UnexpectedEOF)? {
+            '-' => {
+                self.move_next();
+                String::from('-')
+            }
+            _ => String::new(),
+        };
         num.push_str(&self.generate_digits()?);
-
-        // if let Some(fraction) = self.generate_fraction()? {
-        //     num.push_str(fraction);
-        // }
-
-        // if let Some(exponent) = self.generate_exponent() {
-        //     num.push_str(exponent);
-        // }
+        // num.push_str(&self.generate_fraction()?);
+        // num.push_str(&self.generate_exponent()?);
 
         match num.parse::<f64>() {
             Ok(num) => Ok(TokenValue::Number(num)),
@@ -424,7 +419,9 @@ mod tests {
 
     generate_number_value_ok! {
         generate_number_value_ok_zero: ("0"), 0.0;
+        generate_number_value_ok_negative_zero: ("-0"), 0.0;
         generate_number_value_ok_integer: ("123"), 123.0;
+        generate_number_value_ok_negative_integer: ("-100"), -100.0;
     }
 
     macro_rules! generate_number_value_err {
