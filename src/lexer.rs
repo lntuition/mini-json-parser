@@ -238,8 +238,14 @@ impl<'a> Lexer<'a> {
             }
             _ => String::new(),
         };
-        num.push_str(&self.generate_digits()?);
-        // num.push_str(&self.generate_fraction()?);
+
+        num.push_str(&self.generate_integer()?);
+        if Some('.') == self.cur {
+            self.move_next();
+            num.push('.');
+            num.push_str(&self.generate_digits()?)
+        }
+
         // num.push_str(&self.generate_exponent()?);
 
         match num.parse::<f64>() {
@@ -248,16 +254,19 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    fn generate_integer(&mut self) -> Result<String, ErrorInfo> {
+        Ok(match self.cur.ok_or(ErrorInfo::UnexpectedEOF)? {
+            '1'..='9' => self.generate_digits()?,
+            '0' => {
+                self.move_next();
+                String::from('0')
+            }
+            ch @ _ => return Err(ErrorInfo::NotDecDigit(ch)),
+        })
+    }
+
     fn generate_digits(&mut self) -> Result<String, ErrorInfo> {
-        let first_digit = self.cur.ok_or(ErrorInfo::UnexpectedEOF)?;
-        self.move_next();
-
-        let mut digits = match first_digit {
-            '1'..='9' => String::from(first_digit),
-            '0' => return Ok(String::from(first_digit)),
-            _ => return Err(ErrorInfo::NotDecDigit(first_digit)),
-        };
-
+        let mut digits = String::new();
         while let Some(digit) = self.cur {
             match digit {
                 '0'..='9' => {
@@ -267,7 +276,11 @@ impl<'a> Lexer<'a> {
                 _ => break,
             }
         }
-        Ok(digits)
+
+        match digits.is_empty() {
+            true => Err(ErrorInfo::NotDecDigits),
+            false => Ok(digits),
+        }
     }
 }
 
@@ -418,10 +431,14 @@ mod tests {
     }
 
     generate_number_value_ok! {
-        generate_number_value_ok_zero: ("0"), 0.0;
+        generate_number_value_ok_integer_zero: ("0"), 0.0;
         generate_number_value_ok_negative_zero: ("-0"), 0.0;
+        generate_number_value_ok_real_number_zero: ("0.0"), 0.0;
+        generate_number_value_ok_real_number_negative_zero: ("-0.0"), 0.0;
         generate_number_value_ok_integer: ("123"), 123.0;
         generate_number_value_ok_negative_integer: ("-100"), -100.0;
+        generate_number_value_ok_real_number: ("1.234"), 1.234;
+        generate_number_value_ok_negative_real_number: ("-1.234"), -1.234;
     }
 
     macro_rules! generate_number_value_err {
@@ -434,5 +451,6 @@ mod tests {
 
     generate_number_value_err! {
         generate_number_value_err_not_dec_digit: ("A"), ErrorInfo::NotDecDigit('A');
+        generate_number_value_err_wrong_fraction: ("1."), ErrorInfo::NotDecDigits;
     }
 }

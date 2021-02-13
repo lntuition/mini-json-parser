@@ -11,6 +11,7 @@ pub enum ErrorInfo {
     NotHexDigit(char),
 
     NotDecDigit(char),
+    NotDecDigits,
 
     NotNullToken,
     NotTrueToken,
@@ -40,6 +41,9 @@ impl fmt::Display for ErrorInfo {
             }
             ErrorInfo::NotDecDigit(ch) => {
                 write!(f, "Not decimal digit(0..=9), '{}'", ch)
+            }
+            ErrorInfo::NotDecDigits => {
+                write!(f, "Not decimal digits")
             }
             ErrorInfo::NotNullToken => {
                 write!(f, "Not null token, expected 'null'")
