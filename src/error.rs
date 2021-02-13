@@ -10,7 +10,6 @@ pub enum ErrorInfo {
     NotProperEscapedChar(char),
     NotHexDigit(char),
 
-    NotDecDigit(char),
     NotDecDigits,
 
     NotNullToken,
@@ -38,9 +37,6 @@ impl fmt::Display for ErrorInfo {
             }
             ErrorInfo::NotHexDigit(ch) => {
                 write!(f, "Not hexadecimal digit(0..=F), '{}'", ch)
-            }
-            ErrorInfo::NotDecDigit(ch) => {
-                write!(f, "Not decimal digit(0..=9), '{}'", ch)
             }
             ErrorInfo::NotDecDigits => {
                 write!(f, "Not decimal digits")

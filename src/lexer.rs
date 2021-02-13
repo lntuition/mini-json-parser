@@ -240,13 +240,8 @@ impl<'a> Lexer<'a> {
         };
 
         num.push_str(&self.generate_integer()?);
-        if Some('.') == self.cur {
-            self.move_next();
-            num.push('.');
-            num.push_str(&self.generate_digits()?)
-        }
-
-        // num.push_str(&self.generate_exponent()?);
+        num.push_str(&self.generate_fraction()?);
+        num.push_str(&self.generate_exponent()?);
 
         match num.parse::<f64>() {
             Ok(num) => Ok(TokenValue::Number(num)),
@@ -255,14 +250,42 @@ impl<'a> Lexer<'a> {
     }
 
     fn generate_integer(&mut self) -> Result<String, ErrorInfo> {
-        Ok(match self.cur.ok_or(ErrorInfo::UnexpectedEOF)? {
-            '1'..='9' => self.generate_digits()?,
-            '0' => {
+        if Some('0') == self.cur {
+            self.move_next();
+            return Ok(String::from('0'));
+        }
+        self.generate_digits()
+    }
+
+    fn generate_fraction(&mut self) -> Result<String, ErrorInfo> {
+        if Some('.') != self.cur {
+            return Ok(String::new());
+        }
+
+        let mut fraction = String::from('.');
+        self.move_next();
+
+        fraction.push_str(&self.generate_digits()?);
+        Ok(fraction)
+    }
+
+    fn generate_exponent(&mut self) -> Result<String, ErrorInfo> {
+        if Some('e') != self.cur && Some('E') != self.cur {
+            return Ok(String::new());
+        }
+
+        let mut exponent = String::from('e');
+        self.move_next();
+
+        if let Some(sign) = self.cur {
+            if sign == '+' || sign == '-' {
                 self.move_next();
-                String::from('0')
+                exponent.push(sign);
             }
-            ch @ _ => return Err(ErrorInfo::NotDecDigit(ch)),
-        })
+        }
+
+        exponent.push_str(&self.generate_digits()?);
+        Ok(exponent)
     }
 
     fn generate_digits(&mut self) -> Result<String, ErrorInfo> {
@@ -330,7 +353,7 @@ mod tests {
     }
 
     generate_null_value_err! {
-        generate_null_value_err: ("wrong"), ErrorInfo::NotProperHandledPoint(2);
+        generate_null_value_err_internal: ("wrong"), ErrorInfo::NotProperHandledPoint(2);
         generate_null_value_err_not_null: ("none"), ErrorInfo::NotNullToken;
     }
 
@@ -355,7 +378,7 @@ mod tests {
     }
 
     generate_true_value_err! {
-        generate_true_value_err: ("wrong"), ErrorInfo::NotProperHandledPoint(3);
+        generate_true_value_err_internal: ("wrong"), ErrorInfo::NotProperHandledPoint(3);
         generate_true_value_err_not_true: ("torr"), ErrorInfo::NotTrueToken;
     }
 
@@ -380,7 +403,7 @@ mod tests {
     }
 
     generate_false_value_err! {
-        generate_false_value_err: ("wrong"), ErrorInfo::NotProperHandledPoint(4);
+        generate_false_value_err_internal: ("wrong"), ErrorInfo::NotProperHandledPoint(4);
         generate_false_value_err_not_false: ("falsy"), ErrorInfo::NotFalseToken;
     }
 
@@ -415,7 +438,7 @@ mod tests {
     }
 
     generate_string_value_err! {
-        generate_string_value_err_wrong_trial: (r#"string""#), ErrorInfo::NotProperHandledPoint(5);
+        generate_string_value_err_internal: (r#"string""#), ErrorInfo::NotProperHandledPoint(5);
         generate_string_value_err_not_terminated: (r#""string"#), ErrorInfo::UnexpectedEOF;
         generate_string_value_err_control_char: ("\"\u{000C}\""), ErrorInfo::NotAllowedControlChar('\u{000C}');
         generate_string_value_err_wrong_escaped: (r#""\k""#), ErrorInfo::NotProperEscapedChar('k');
@@ -433,12 +456,41 @@ mod tests {
     generate_number_value_ok! {
         generate_number_value_ok_integer_zero: ("0"), 0.0;
         generate_number_value_ok_negative_zero: ("-0"), 0.0;
-        generate_number_value_ok_real_number_zero: ("0.0"), 0.0;
-        generate_number_value_ok_real_number_negative_zero: ("-0.0"), 0.0;
+        generate_number_value_ok_real_zero: ("0.0"), 0.0;
+        generate_number_value_ok_real_negative_zero: ("-0.0"), 0.0;
+
         generate_number_value_ok_integer: ("123"), 123.0;
         generate_number_value_ok_negative_integer: ("-100"), -100.0;
-        generate_number_value_ok_real_number: ("1.234"), 1.234;
-        generate_number_value_ok_negative_real_number: ("-1.234"), -1.234;
+        generate_number_value_ok_real: ("1.234"), 1.234;
+        generate_number_value_ok_negative_real: ("-1.234"), -1.234;
+
+        generate_number_value_ok_integer_zero_positive_exponent: ("0e+4"), 0.0;
+        generate_number_value_ok_integer_zero_negative_exponent: ("0e-4"), 0.0;
+        generate_number_value_ok_integer_zero_default_exponent: ("0e4"), 0.0;
+        generate_number_value_ok_negative_zero_positive_exponent: ("-0e+4"), 0.0;
+        generate_number_value_ok_negative_zero_negative_exponent: ("-0e-4"), 0.0;
+        generate_number_value_ok_negative_zero_default_exponent: ("-0e4"), 0.0;
+
+        generate_number_value_ok_real_zero_positive_exponent: ("0.0e+4"), 0.0;
+        generate_number_value_ok_real_zero_negative_exponent: ("0.0e-4"), 0.0;
+        generate_number_value_ok_real_zero_default_exponent: ("0.0e4"), 0.0;
+        generate_number_value_ok_real_negative_zero_positive_exponent: ("-0.0e+4"), 0.0;
+        generate_number_value_ok_real_negative_zero_negative_exponent: ("-0.0e-4"), 0.0;
+        generate_number_value_ok_real_negative_zero_default_exponent: ("-0.0e4"), 0.0;
+
+        generate_number_value_ok_integer_positive_exponent: ("1e+2"), 100.0;
+        generate_number_value_ok_integer_negative_exponent: ("1e-2"), 0.01;
+        generate_number_value_ok_integer_default_exponent: ("1e2"), 100.0;
+        generate_number_value_ok_negative_integer_positive_exponent: ("-1e+2"), -100.0;
+        generate_number_value_ok_negative_integer_negative_exponent: ("-1e-2"), -0.01;
+        generate_number_value_ok_negative_integer_default_exponent: ("-1e2"), -100.0;
+
+        generate_number_value_ok_real_positive_exponent: ("1.23e+2"), 123.0;
+        generate_number_value_ok_real_negative_exponent: ("1.23e-2"), 0.0123;
+        generate_number_value_ok_real_default_exponent: ("1.23e2"), 123.0;
+        generate_number_value_ok_negative_real_positive_exponent: ("-1.23e+2"), -123.0;
+        generate_number_value_ok_negative_real_negative_exponent: ("-1.23e-2"), -0.0123;
+        generate_number_value_ok_negative_real_default_exponent: ("-1.23e2"), -123.0;
     }
 
     macro_rules! generate_number_value_err {
@@ -450,7 +502,8 @@ mod tests {
     }
 
     generate_number_value_err! {
-        generate_number_value_err_not_dec_digit: ("A"), ErrorInfo::NotDecDigit('A');
+        generate_number_value_err_wrong_integer: ("A"), ErrorInfo::NotDecDigits;
         generate_number_value_err_wrong_fraction: ("1."), ErrorInfo::NotDecDigits;
+        generate_number_value_err_wrong_exponent: ("1e"), ErrorInfo::NotDecDigits;
     }
 }
