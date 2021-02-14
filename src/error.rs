@@ -60,7 +60,7 @@ impl fmt::Display for ErrorInfo {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Error {
     pub info: ErrorInfo,
     pub range: PositionRange,

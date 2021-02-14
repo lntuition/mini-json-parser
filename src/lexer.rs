@@ -39,13 +39,13 @@ impl<'a> Lexer<'a> {
     }
 
     fn move_next(&mut self) {
-        self.cur = self.chars.next();
         if let Some(ch) = self.cur {
             match ch {
                 LINE_FEED => self.pos.next_row(),
                 _ => self.pos.next_col(),
             }
         }
+        self.cur = self.chars.next();
     }
 
     fn move_next_ignore_whitespace(&mut self) {
@@ -67,7 +67,7 @@ impl<'a> Lexer<'a> {
         true
     }
 
-    pub fn tokenize(&mut self) -> Result<Vec<Token>, Error> {
+    pub fn generate_tokens(&mut self) -> Result<Vec<Token>, Error> {
         let mut tokens: Vec<Token> = vec![];
         loop {
             self.move_next_ignore_whitespace();
@@ -309,7 +309,8 @@ impl<'a> Lexer<'a> {
 
 #[cfg(test)]
 mod tests {
-    use super::{ErrorInfo, Lexer, TokenValue};
+    use super::{ErrorInfo, Lexer, Position, PositionRange, Token, TokenValue};
+    use pretty_assertions::assert_eq;
 
     macro_rules! generate_value {
         ($name:ident, $input:expr, $generator:ident, $expect:expr) => {
@@ -330,6 +331,84 @@ mod tests {
         ($name:ident, $input:expr, $generator:ident, $err:expr) => {
             generate_value!($name, $input, $generator, Err($err));
         };
+    }
+
+    macro_rules! generate_tokens_ok {
+        ($($name:ident: $input:expr, $val:expr;)*) => {
+        $(
+            generate_value_ok! ($name, $input, generate_tokens, $val);
+        )*
+        }
+    }
+
+    generate_tokens_ok! {
+        generate_tokens_ok: (r#"{
+            "key" : [1.5e+1, 2]
+        }"#), vec![
+            Token {
+                val: TokenValue::BeginObject,
+                range: PositionRange {
+                    start: Position { row: 1, col: 1 },
+                    end: Position { row: 1, col: 2 },
+                }
+            },
+            Token {
+                val: TokenValue::String("key".to_string()),
+                range: PositionRange {
+                    start: Position { row: 2, col: 13 },
+                    end: Position { row: 2, col: 18 },
+                }
+            },
+            Token {
+                val: TokenValue::NameSeperator,
+                range: PositionRange {
+                    start: Position { row: 2, col: 19 },
+                    end: Position { row: 2, col: 20 },
+                }
+            },
+            Token {
+                val: TokenValue::BeginArray,
+                range: PositionRange {
+                    start: Position { row: 2, col: 21 },
+                    end: Position { row: 2, col: 22 },
+                }
+            },
+            Token {
+                val: TokenValue::Number(15.0),
+                range: PositionRange {
+                    start: Position { row: 2, col: 22 },
+                    end: Position { row: 2, col: 28 },
+                }
+            },
+            Token {
+                val: TokenValue::ValueSeperator,
+                range: PositionRange {
+                    start: Position { row: 2, col: 28 },
+                    end: Position { row: 2, col: 29 },
+                }
+            },
+            Token {
+                val: TokenValue::Number(2.0),
+                range: PositionRange {
+                    start: Position { row: 2, col: 30 },
+                    end: Position { row: 2, col: 31 },
+                }
+            },
+            Token {
+                val: TokenValue::EndArray,
+                range: PositionRange {
+                    start: Position { row: 2, col: 31 },
+                    end: Position { row: 2, col: 32 },
+                }
+            },
+            Token {
+                val: TokenValue::EndObject,
+                range: PositionRange {
+                    start: Position { row: 3, col: 9 },
+                    end: Position { row: 3, col: 10 },
+                }
+            },
+        ];
     }
 
     macro_rules! generate_reserved_value_ok {
