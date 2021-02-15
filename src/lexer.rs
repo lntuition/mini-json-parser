@@ -291,13 +291,12 @@ impl<'a> Lexer<'a> {
     fn generate_digits(&mut self) -> Result<String, ErrorInfo> {
         let mut digits = String::new();
         while let Some(digit) = self.cur {
-            match digit {
-                '0'..='9' => {
-                    self.move_next();
-                    digits.push(digit)
-                }
-                _ => break,
+            if !('0'..='9').contains(&digit) {
+                break
             }
+
+            self.move_next();
+            digits.push(digit)
         }
 
         match digits.is_empty() {
