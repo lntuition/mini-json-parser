@@ -23,7 +23,7 @@ impl Position {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PositionRange {
     pub start: Position,
     pub end: Position,
