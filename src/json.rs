@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+
 #[derive(Debug, PartialEq)]
 pub enum Json {
     Null,
@@ -7,6 +8,13 @@ pub enum Json {
     String(String),
     Array(Vec<Box<Json>>),
     Object(HashMap<String, Box<Json>>),
+}
+
+#[macro_export]
+macro_rules! json_string {
+    ( $x:expr ) => {
+        Json::String($x.to_string())
+    };
 }
 
 #[macro_export]
@@ -33,12 +41,13 @@ macro_rules! json_object {
             Json::Object(HashMap::new())
         }
     };
-    ( $( $k:expr; $v:expr), *) => {
+    ( $( $x:expr ), *) => {
         {
             use std::collections::HashMap;
             let mut m: HashMap<String, Box<Json>> = HashMap::new();
             $(
-                m.insert($k, Box::new($v));
+                let (k, v) = $x;
+                m.insert(k, Box::new(v));
             )*
             Json::Object(m)
         }

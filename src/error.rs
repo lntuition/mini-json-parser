@@ -1,73 +1,33 @@
-use crate::position::PositionRange;
-use std::fmt;
+use std::fmt::{Display, Formatter, Result};
 
 #[derive(Debug, PartialEq)]
-pub enum ErrorInfo {
-    NotProperToken(char),
-
-    UnexpectedEOF,
-    NotAllowedControlChar(char),
-    NotProperEscapedChar(char),
-    NotHexDigit(char),
-
-    NotDecDigits,
-
-    NotNullToken,
-    NotTrueToken,
-    NotFalseToken,
-
-    NotProperHandledPoint(usize),
-    UnreachablePoint(usize),
+pub enum Error {
+    // TODO : Consider add reason to unexpected character
+    UnexpectedChar { ch: char, row: usize, col: usize },
+    UnexpectedEndOfJson,
+    UnexpectedError { msg: String },
 }
 
-impl fmt::Display for ErrorInfo {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl Display for Error {
+    fn fmt(&self, f: &mut Formatter) -> Result {
         match *self {
-            ErrorInfo::NotProperToken(ch) => {
-                write!(f, "Not proper token first character, '{}'", ch)
+            Error::UnexpectedChar {
+                ref ch,
+                ref row,
+                ref col,
+            } => {
+                write!(
+                    f,
+                    "Unexpected character '{}' at ln {} : col {}",
+                    ch, row, col
+                )
             }
-            ErrorInfo::UnexpectedEOF => {
-                write!(f, "Unexpected EOF character while parsing")
+            Error::UnexpectedEndOfJson => {
+                write!(f, "Unexpected end of JSON")
             }
-            ErrorInfo::NotAllowedControlChar(ch) => {
-                write!(f, "Not allowed control character, '\\u{:04x}'", ch as u32)
-            }
-            ErrorInfo::NotProperEscapedChar(ch) => {
-                write!(f, "Not proper escaped character, '\\{}'", ch)
-            }
-            ErrorInfo::NotHexDigit(ch) => {
-                write!(f, "Not hexadecimal digit(0..=F), '{}'", ch)
-            }
-            ErrorInfo::NotDecDigits => {
-                write!(f, "Not decimal digits")
-            }
-            ErrorInfo::NotNullToken => {
-                write!(f, "Not null token, expected 'null'")
-            }
-            ErrorInfo::NotTrueToken => {
-                write!(f, "Not true token, expected 'true'")
-            }
-            ErrorInfo::NotFalseToken => {
-                write!(f, "Not false token, expected 'false'")
-            }
-            ErrorInfo::NotProperHandledPoint(id) => {
-                write!(f, "Not proper handled point #{}, Please check core", id)
-            }
-            ErrorInfo::UnreachablePoint(id) => {
-                write!(f, "Unreachable point #{}, Please report issue", id)
+            Error::UnexpectedError { ref msg } => {
+                write!(f, "Unexpected error : {}", msg)
             }
         }
-    }
-}
-
-#[derive(Debug, PartialEq)]
-pub struct Error {
-    pub info: ErrorInfo,
-    pub range: PositionRange,
-}
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{} - {}", self.range, self.info)
     }
 }
