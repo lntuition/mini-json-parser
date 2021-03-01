@@ -180,7 +180,16 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse(&mut self) -> Result<Json, Error> {
-        let ret = match self.get_cur_non_whitespace_byte()? {
+        let ret = self.parse_value()?;
+
+        match self.get_cur_non_whitespace_byte() {
+            Ok(_) => of_unexpected_character!(self),
+            Err(_) => Ok(ret),
+        }
+    }
+
+    pub fn parse_value(&mut self) -> Result<Json, Error> {
+        Ok(match self.get_cur_non_whitespace_byte()? {
             b'n' => {
                 expect_sequence!(self, b'u', b'l', b'l');
                 Json::Null
@@ -211,10 +220,7 @@ impl<'a> Parser<'a> {
             BEGIN_ARRAY => self.parse_array()?,
             BEGIN_OBJECT => self.parse_object()?,
             _ => of_unexpected_character!(self),
-        };
-
-        // TODO : Check unresolved source exist
-        Ok(ret)
+        })
     }
 
     fn parse_string(&mut self) -> Result<String, Error> {
@@ -259,7 +265,7 @@ impl<'a> Parser<'a> {
             match self.get_cur_non_whitespace_byte()? {
                 END_ARRAY => break,
                 _ => {
-                    v.push(self.parse()?);
+                    v.push(self.parse_value()?);
                     match self.get_cur_non_whitespace_byte()? {
                         END_ARRAY => break,
                         VALUE_SEPERATOR => self.bump_byte(),
@@ -287,7 +293,7 @@ impl<'a> Parser<'a> {
                         _ => of_unexpected_character!(self),
                     }
 
-                    m.insert(key, self.parse()?);
+                    m.insert(key, self.parse_value()?);
                     match self.get_cur_non_whitespace_byte()? {
                         END_OBJECT => break,
                         VALUE_SEPERATOR => self.bump_byte(),
@@ -404,7 +410,9 @@ mod tests {
         number_wrong_decimal_point: ("1.f"), Error::UnexpectedChar { ch : 'f', row : 1, col: 3 };
         number_wrong_expoent: ("1et"), Error::UnexpectedChar { ch : 't', row : 1, col: 3 };
         array_wrong_seperated: ("[true 123]"), Error::UnexpectedChar { ch : '1', row : 1, col: 7 };
+        array_wrong_remained: ("[true, 123]]"), Error::UnexpectedChar { ch : ']', row : 1, col : 12 };
         object_wrong_name_seperated: (r#"{"key" 123}"#), Error::UnexpectedChar { ch : '1', row : 1, col: 8 };
         object_wrong_value_seperated: (r#"{"key": 123 "true": true}"#), Error::UnexpectedChar { ch : '"', row : 1, col: 13 };
+        object_wrong_remained: (r#"{"true": 123}}"#), Error::UnexpectedChar { ch : '}', row : 1, col : 14 };
     }
 }
