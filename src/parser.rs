@@ -302,6 +302,10 @@ impl<'a> Parser<'a> {
     }
 }
 
+pub fn parse(source: &str) -> Result<Json, Error> {
+    Parser::new(source).parse()
+}
+
 #[cfg(test)]
 mod tests {
     use super::{Error, Json, Parser};
