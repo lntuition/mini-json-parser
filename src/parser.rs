@@ -259,7 +259,7 @@ impl<'a> Parser<'a> {
             match self.get_cur_non_whitespace_byte()? {
                 END_ARRAY => break,
                 _ => {
-                    v.push(Box::new(self.parse()?));
+                    v.push(self.parse()?);
                     match self.get_cur_non_whitespace_byte()? {
                         END_ARRAY => break,
                         VALUE_SEPERATOR => self.bump_byte(),
@@ -287,7 +287,7 @@ impl<'a> Parser<'a> {
                         _ => of_unexpected_character!(self),
                     }
 
-                    m.insert(key, Box::new(self.parse()?));
+                    m.insert(key, self.parse()?);
                     match self.get_cur_non_whitespace_byte()? {
                         END_OBJECT => break,
                         VALUE_SEPERATOR => self.bump_byte(),
